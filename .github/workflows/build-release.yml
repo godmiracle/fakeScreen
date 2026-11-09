@@ -32,7 +32,11 @@ jobs:
           packages: platform-tools
 
       - name: Install Android SDK packages
-        run: sdkmanager --channel=3 "platforms;android-37" "build-tools;37.0.0"
+        run: |
+          sdkmanager --channel=3 "platforms;android-37.0" "build-tools;37.0.0"
+          if [[ -d "$ANDROID_HOME/platforms/android-37.0" && ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
 
       - name: Build release APK
         run: bash ./gradlew --no-daemon clean assembleRelease
