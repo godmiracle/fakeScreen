@@ -3,7 +3,7 @@ agp = "9.1.1"
 androidx-core = "1.19.1"
 appcompat = "1.7.1"
 libxposed-api = "102.0.0"
-libxposed-service = "102.0.1"
+libxposed-service = "102.0.0"
 
 [libraries]
 core = { module = "androidx.core:core", version.ref = "androidx-core" }
