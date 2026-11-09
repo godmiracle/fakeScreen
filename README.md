@@ -49,6 +49,6 @@ bash ./gradlew assembleRelease
 ```
 
 ## GitHub Actions 构建 Release
-在 GitHub 的 **Actions** 页面手动运行 **Build Release APK**，或推送名称以 `v` 开头的 tag（例如 `v2.0`）。构建完成后，从该 workflow run 的 artifact 下载 `fakeScreen-release-apk`。
+在 GitHub 的 **Actions** 页面手动运行 **Build Release APK** 会生成 30 天有效的 `fakeScreen-release-apk` artifact。推送名称以 `v` 开头的 tag（例如 `v2.0`）会构建 APK、创建 GitHub Release，并将 APK 附加到该 Release。
 
 当前 Release 构建沿用 Gradle 的 debug signing config。用于公开分发或后续覆盖升级前，应配置项目专用签名密钥。
