@@ -103,6 +103,9 @@ public class MainHook extends XposedModule {
 
         hook(powerPress).intercept(chain -> {
             if (!FakeScreenIpc.isEnabled()) {
+                XLog.log(Log.INFO, "powerPress hook: enabled=false, screenOffByFakeScreen="
+                        + DisplayPowerControl.isScreenOffByFakeScreen()
+                        + ", arguments=" + describeArguments(chain.getArgs()));
                 return chain.proceed();
             }
 

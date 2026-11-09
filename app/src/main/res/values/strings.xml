@@ -1,10 +1,10 @@
 <resources>
     <string name="app_name">fakeScreen</string>
-    <string name="module_version">v2.0 (Build 20261005)</string>
+    <string name="module_version">v2.1 (Build 20261109)</string>
     <string name="xposeddescription">允许将电源按钮单击行为设置为仅熄屏</string>
     <string name="github_repo_url">https://github.com/chuyb-re/fakeScreen</string>
     <string name="help">https://github.com/chuyb-re/fakeScreen</string>
-    <string name="tip">模块激活并开启功能开关后，按下电源键将仅熄灭屏幕。</string>
+    <string name="tip">模块激活并开启功能开关后，单击电源键仅熄灭屏幕；假熄屏期间双击电源键唤醒屏幕。</string>
     <string name="dialog_tips_title">使用提示</string>
     <string name="dialog_positive_btn">确定</string>
 
@@ -16,4 +16,21 @@
     <string name="action_github_repo">GitHub仓库</string>
     <string name="action_usage_tips">使用提示</string>
     <string name="toast_browser_unavailable">Unable to open browser</string>
+    <string name="diagnostic_log_title">诊断日志</string>
+    <string name="diagnostic_log_hint">记录模块状态、电源键处理、显示模式和错误。导出的文件可用于排查问题。</string>
+    <string name="diagnostic_log_back">返回</string>
+    <string name="diagnostic_log_refresh">刷新</string>
+    <string name="diagnostic_log_export">导出</string>
+    <string name="diagnostic_log_clear">清除</string>
+    <string name="diagnostic_log_cancel">取消</string>
+    <string name="diagnostic_log_loading">正在读取日志…</string>
+    <string name="diagnostic_log_empty">暂无诊断日志。</string>
+    <string name="diagnostic_log_no_system_entries">尚未收到系统模块日志。请确认已在 LSPosed 中启用模块并重启设备，然后刷新；如果仍为空，可查看 LSPosed 日志。</string>
+    <string name="diagnostic_log_truncated">这里只显示最近的日志，导出文件包含全部保留记录。</string>
+    <string name="diagnostic_log_clear_confirm">确定清除已保存的诊断日志吗？</string>
+    <string name="diagnostic_log_read_failed">读取日志失败</string>
+    <string name="diagnostic_log_export_unavailable">无法打开文件保存界面</string>
+    <string name="diagnostic_log_exported">日志已导出</string>
+    <string name="diagnostic_log_export_failed">导出日志失败</string>
+    <string name="diagnostic_log_clear_failed">清除日志失败</string>
 </resources>

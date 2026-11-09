@@ -55,6 +55,8 @@ public final class FakeScreenState {
      * @param enabled 目标开关状态。
      */
     public static void setEnabled(Context context, boolean enabled) {
+        DiagnosticLogBridge.attach(context);
+        DiagnosticLogBridge.record(Log.INFO, "App requested FakeScreen enabled=" + enabled, null);
         Intent intent = new Intent(ACTION_TOGGLE_FAKE_SCREEN);
         intent.putExtra(EXTRA_ENABLED, enabled);
         context.sendBroadcast(intent);

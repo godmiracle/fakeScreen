@@ -26,6 +26,7 @@ public class XLog {
                 Log.e(TAG, "Failed to write to the Xposed module log.", e);
             }
         }
+        DiagnosticLogBridge.record(level, message, null);
     }
 
     public static void error(String message,Exception e){
@@ -38,6 +39,7 @@ public class XLog {
                 Log.e(TAG, "Failed to write the exception to the Xposed module log.", loggingError);
             }
         }
+        DiagnosticLogBridge.record(Log.ERROR, message, e);
     }
     public static void init(XposedModule module){
         XLog.module=module;

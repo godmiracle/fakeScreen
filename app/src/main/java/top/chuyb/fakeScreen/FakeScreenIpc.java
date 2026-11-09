@@ -56,6 +56,7 @@ final class FakeScreenIpc {
      */
     static void attach(XposedModule module, Class<?> pwmClass, Object pwmInstance) {
         sSystemContext = ReflectUtils.getSystemContext(pwmClass, pwmInstance);
+        DiagnosticLogBridge.attach(sSystemContext);
         if (pwmInstance == null) return;
         registerToggleReceiver(module);
     }

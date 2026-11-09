@@ -3,6 +3,8 @@ package top.chuyb.fakeScreen;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.util.Log;
 import android.view.Window;
 import android.widget.LinearLayout;
 import android.widget.Toast;
@@ -31,10 +33,15 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setupEdgeToEdgeWindow();
         setContentView(R.layout.activity_main);
+        DiagnosticLogBridge.attach(getApplicationContext());
+        DiagnosticLogBridge.record(Log.INFO, "App opened; " + getString(R.string.module_version)
+                + "; device=" + Build.MANUFACTURER + " " + Build.MODEL
+                + "; Android API=" + Build.VERSION.SDK_INT, null);
         initSwitchButton();
         initHideIconButton();
         initGithubButton();
         initTipsButton();
+        initDiagnosticLogButton();
     }
 
     /**
@@ -101,5 +108,10 @@ public class MainActivity extends AppCompatActivity {
                     .setPositiveButton(R.string.dialog_positive_btn, null)
                     .show();
         });
+    }
+
+    private void initDiagnosticLogButton() {
+        findViewById(R.id.btn_diagnostic_log).setOnClickListener(v ->
+                startActivity(new Intent(this, DiagnosticLogActivity.class)));
     }
 }
