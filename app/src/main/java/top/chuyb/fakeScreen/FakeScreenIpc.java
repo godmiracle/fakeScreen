@@ -82,6 +82,7 @@ final class FakeScreenIpc {
                     public void onReceive(Context context, Intent intent) {
                         boolean enabled = intent.getBooleanExtra(FakeScreenState.EXTRA_ENABLED, false);
                         sIsFakeScreenEnabled = enabled;
+                        XLog.log(Log.INFO, "FakeScreen toggle received by system_server: enabled=" + enabled);
 
                         try {
                             Settings.Global.putInt(

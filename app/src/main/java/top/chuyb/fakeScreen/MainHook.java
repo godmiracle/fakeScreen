@@ -1,6 +1,7 @@
 package top.chuyb.fakeScreen;
 
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -21,7 +22,7 @@ import java.util.List;
  */
 public class MainHook extends XposedModule {
     private static final Handler mHandler = new Handler(Looper.getMainLooper());
-    private static Runnable mPendingPowerTask = null;
+    private static volatile Runnable mPendingPowerTask = null;
     private static final long MULTI_PRESS_TIMEOUT_MS = 220; // 多击防抖超时
 
     private final String PREFS_NAME ="FakeScreenSetting";
@@ -35,6 +36,7 @@ public class MainHook extends XposedModule {
     public void onSystemServerStarting(XposedModuleInterface.SystemServerStartingParam param) {
         super.onSystemServerStarting(param);
         XLog.init(this);
+        XLog.log(Log.INFO, "system_server starting; Android API=" + Build.VERSION.SDK_INT);
         ClassLoader classLoader = param.getClassLoader();
         try {
             Class<?> pwmClass = classLoader.loadClass("com.android.server.policy.PhoneWindowManager");
@@ -67,7 +69,10 @@ public class MainHook extends XposedModule {
      */
     private void registerIpcReceiver(Class<?> pwmClass) {
         Method initMethod = ReflectUtils.findMethodByName(pwmClass, "init");
-        if (initMethod == null) return;
+        if (initMethod == null) {
+            XLog.log(Log.ERROR, "PhoneWindowManager.init was not found; toggle receiver will not be registered.");
+            return;
+        }
         initMethod.setAccessible(true);
         hook(initMethod).intercept(chain -> {
             Object result = chain.proceed();
@@ -75,14 +80,15 @@ public class MainHook extends XposedModule {
             FakeScreenIpc.attach(this, pwmClass, pwmInstance);
             return result;
         });
+        XLog.log(Log.INFO, "Hooked PhoneWindowManager.init: " + initMethod.toGenericString());
     }
 
     // =========================================================================
-    // 2. 电源键 hook 与单击拦截
+    // 2. 电源键 hook 与单击/双击处理
     // =========================================================================
 
     /**
-     * hook PhoneWindowManager 中的 powerPress 方法，以拦截单击手势。
+     * hook PhoneWindowManager 中的 powerPress 方法，处理 FakeScreen 单击熄屏和双击唤醒。
      *
      * @param pwmClass    PhoneWindowManager 的 Class 引用。
      * @param classLoader 用于加载系统类的 ClassLoader。
@@ -90,7 +96,7 @@ public class MainHook extends XposedModule {
     private void hookPowerButton(Class<?> pwmClass, ClassLoader classLoader) {
         Method powerPress = findPowerPressMethod(pwmClass);
         if (powerPress == null) {
-            XLog.log(Log.ERROR,"Failed to find suitable powerPress method");
+            XLog.log(Log.ERROR, "Failed to find a compatible PhoneWindowManager.powerPress method.");
             return;
         }
         powerPress.setAccessible(true);
@@ -101,28 +107,40 @@ public class MainHook extends XposedModule {
             }
 
             int count = extractClickCount(chain.getArgs());
+            boolean screenOffByFakeScreen = DisplayPowerControl.isScreenOffByFakeScreen();
+            XLog.log(Log.INFO, "powerPress received: count=" + count
+                    + ", screenOffByFakeScreen=" + screenOffByFakeScreen);
+            XLog.log(Log.DEBUG, "powerPress arguments: " + describeArguments(chain.getArgs()));
 
-            // 放行多击手势（例如双击启动相机）
-            if (count > 1) {
+            // FakeScreen 熄屏时，双击恢复屏幕；亮屏时保留系统原有双击动作。
+            if (count == 2) {
                 cancelPendingPowerTask();
-                DisplayPowerControl.resetTargetMode();
+                if (screenOffByFakeScreen) {
+                    XLog.log(Log.INFO, "Power-key action: wake FakeScreen display on double press.");
+                    scheduleScreenModeChange(false, classLoader, 0);
+                    return null;
+                }
+                XLog.log(Log.INFO, "Power-key action: pass double press to the system.");
                 return chain.proceed();
             }
-            // 拦截单击电源键
-            if (count == 1) {
-                cancelPendingPowerTask();
-                mPendingPowerTask = () -> {
-                    try {
-                        DisplayPowerControl.toggle(this, classLoader);
-                    } catch (Exception e){
-                        XLog.error("An exception occurred while switching the screen’s power mode.",e);
-                        return;
-                    }
-                    mPendingPowerTask = null;
-                };
 
-                mHandler.postDelayed(mPendingPowerTask, MULTI_PRESS_TIMEOUT_MS);
-                return null; // 拦截系统原生的锁屏与休眠行为
+            // 三击及以上交给系统处理，保留系统手势。
+            if (count > 2) {
+                cancelPendingPowerTask();
+                XLog.log(Log.INFO, "Power-key action: pass multi-press count=" + count + " to the system.");
+                return chain.proceed();
+            }
+
+            // FakeScreen 熄屏期间，单击不唤醒；亮屏期间单击仅关闭物理屏幕。
+            if (count == 1) {
+                if (screenOffByFakeScreen) {
+                    XLog.log(Log.INFO, "Power-key action: ignore single press while FakeScreen display is off.");
+                    return null;
+                }
+                cancelPendingPowerTask();
+                XLog.log(Log.INFO, "Power-key action: turn the display off after the single-press window.");
+                scheduleScreenModeChange(true, classLoader, MULTI_PRESS_TIMEOUT_MS);
+                return null;
             }
 
             return chain.proceed();
@@ -136,6 +154,45 @@ public class MainHook extends XposedModule {
         if (mPendingPowerTask != null) {
             mHandler.removeCallbacks(mPendingPowerTask);
             mPendingPowerTask = null;
+            XLog.log(Log.DEBUG, "Cancelled a pending power-key display action.");
+        }
+    }
+
+    /**
+     * 延迟执行显示模式切换，避免在 PhoneWindowManager 的按键处理调用栈中操作显示服务。
+     *
+     * @param turnScreenOff true 表示熄屏，false 表示唤醒屏幕。
+     * @param classLoader 用于解析系统显示类的 ClassLoader。
+     * @param delayMs 执行延迟。
+     */
+    private void scheduleScreenModeChange(boolean turnScreenOff, ClassLoader classLoader, long delayMs) {
+        cancelPendingPowerTask();
+        String targetMode = turnScreenOff ? "OFF" : "NORMAL";
+        XLog.log(Log.DEBUG, "Queue display mode request: target=" + targetMode + ", delayMs=" + delayMs);
+        Runnable task = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (turnScreenOff) {
+                        DisplayPowerControl.turnScreenOff(classLoader);
+                    } else {
+                        DisplayPowerControl.wakeScreen(classLoader);
+                    }
+                    XLog.log(Log.INFO, "Display mode request completed: target=" + targetMode
+                            + ", screenOffByFakeScreen=" + DisplayPowerControl.isScreenOffByFakeScreen());
+                } catch (Exception e) {
+                    XLog.error("Display mode request failed: target=" + targetMode, e);
+                } finally {
+                    if (mPendingPowerTask == this) {
+                        mPendingPowerTask = null;
+                    }
+                }
+            }
+        };
+        mPendingPowerTask = task;
+        if (!mHandler.postDelayed(task, delayMs)) {
+            mPendingPowerTask = null;
+            XLog.log(Log.ERROR, "Failed to enqueue display mode request: target=" + targetMode);
         }
     }
 
@@ -151,7 +208,27 @@ public class MainHook extends XposedModule {
                 return (Integer) arg;
             }
         }
+        XLog.log(Log.WARN, "No integer click-count argument found; defaulting to one press.");
         return 1;
+    }
+
+    private static String describeArguments(List<Object> args) {
+        StringBuilder description = new StringBuilder("[");
+        for (int i = 0; i < args.size(); i++) {
+            if (i > 0) {
+                description.append(", ");
+            }
+            Object arg = args.get(i);
+            description.append(i).append('=');
+            if (arg == null) {
+                description.append("null");
+            } else if (arg instanceof Number || arg instanceof Boolean || arg instanceof Character) {
+                description.append(arg.getClass().getSimpleName()).append(':').append(arg);
+            } else {
+                description.append(arg.getClass().getName());
+            }
+        }
+        return description.append(']').toString();
     }
 
     /**
@@ -165,6 +242,7 @@ public class MainHook extends XposedModule {
             if ("powerPress".equals(method.getName())) {
                 Class<?>[] paramTypes = method.getParameterTypes();
                 if (paramTypes.length >= 2 && paramTypes[0] == long.class && paramTypes[1] == int.class) {
+                    XLog.log(Log.INFO, "Selected powerPress method: " + method.toGenericString());
                     return method;
                 }
             }

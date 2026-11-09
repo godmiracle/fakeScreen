@@ -9,7 +9,14 @@
 ---
 
 ## 核心特性
-模块激活并开启功能后按下电源键仅会熄灭屏幕。
+模块激活并开启功能后，单击电源键仅熄灭屏幕；在 FakeScreen 主动熄屏期间双击电源键可唤醒屏幕。屏幕亮起时，系统原有的双击电源键功能保持不变。
+
+## 问题日志
+模块会将按键次数、FakeScreen 熄屏状态、显示模式请求和异常同时写入 Android 日志（`FakeScreen` 标签）与 LSPosed 模块日志。复现问题后可通过以下命令导出日志：
+
+```bash
+adb logcat -b all -d -v time -s FakeScreen
+```
 
 ---
 ## 兼容性
@@ -38,4 +45,10 @@
 ```bash
 git clone https://github.com/chuyb-re/fakeScreen.git
 cd fakeScreen
-./gradlew assembleRelease
+bash ./gradlew assembleRelease
+```
+
+## GitHub Actions 构建 Release
+在 GitHub 的 **Actions** 页面手动运行 **Build Release APK**，或推送名称以 `v` 开头的 tag（例如 `v2.0`）。构建完成后，从该 workflow run 的 artifact 下载 `fakeScreen-release-apk`。
+
+当前 Release 构建沿用 Gradle 的 debug signing config。用于公开分发或后续覆盖升级前，应配置项目专用签名密钥。

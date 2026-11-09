@@ -4,18 +4,17 @@ import android.annotation.SuppressLint;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
-import io.github.libxposed.api.XposedModule;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 通过硬件层 SurfaceControl 接口控制显示屏电源模式。本类不安装任何 hook，
- * hook 层只调用 {@link #toggle(XposedModule, ClassLoader)} 与 {@link #resetTargetMode()}。
+ * hook 层只调用明确的熄屏/唤醒操作，并通过状态标记区分 FakeScreen 主动熄屏。
  *
  * @author chuyb-re
  * @since 1.0
@@ -23,87 +22,94 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class DisplayPowerControl {
     private static final int POWER_MODE_OFF = 0;    // 熄屏
     private static final int POWER_MODE_NORMAL = 2; // 亮屏
-    private static final AtomicInteger sTargetPowerMode = new AtomicInteger(POWER_MODE_OFF);
-    public static boolean useCompatibilityMode = false;
+    private static final AtomicBoolean sScreenOffByFakeScreen = new AtomicBoolean(false);
+    public static volatile boolean useCompatibilityMode = false;
 
 
     private DisplayPowerControl() {
         // 工具类，禁止实例化。
     }
 
-    /**
-     * 复位待切换的电源模式，使下一次切换执行熄屏。
-     */
-    static void resetTargetMode() {
-        sTargetPowerMode.set(POWER_MODE_OFF);
+    static boolean isScreenOffByFakeScreen() {
+        return sScreenOffByFakeScreen.get();
     }
 
     /**
-     * 通过硬件层 SurfaceControl 接口切换屏幕电源模式。
+     * 通过硬件层 SurfaceControl 接口仅关闭物理屏幕。
      *
-     * @param module      用于框架日志的模块实例。
      * @param classLoader 用于解析 SurfaceControl 与显示 token 的 ClassLoader。
      */
-    static void toggle(XposedModule module, ClassLoader classLoader) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    static void turnScreenOff(ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+        if (applyPowerMode(POWER_MODE_OFF, classLoader)) {
+            sScreenOffByFakeScreen.set(true);
+            XLog.log(Log.INFO, "FakeScreen display state set to off.");
+        }
+    }
+
+    /**
+     * 将 FakeScreen 主动关闭的物理屏幕恢复到正常显示模式。
+     */
+    static void wakeScreen(ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+        if (applyPowerMode(POWER_MODE_NORMAL, classLoader)) {
+            sScreenOffByFakeScreen.set(false);
+            XLog.log(Log.INFO, "FakeScreen display state set to on.");
+        }
+    }
+
+    private static boolean applyPowerMode(int targetPowerMode, ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         IBinder displayBinder = getUniversalDisplayBinder(classLoader);
         if (displayBinder == null) {
-            XLog.log(Log.ERROR,"DisplayBinder is null, skipping display power mode toggle");
-            return;
+            XLog.log(Log.ERROR, "DisplayBinder is null; cannot apply display mode=" + modeName(targetPowerMode));
+            return false;
         }
+        XLog.log(Log.DEBUG, "Applying display power mode=" + modeName(targetPowerMode)
+                + ", compatibilityMode=" + useCompatibilityMode);
         if (useCompatibilityMode) {
-            doToggleInCompatibilityMode(classLoader, displayBinder);
-        } else {
-            doToggle(classLoader, displayBinder);
-        }
-
-
-        sTargetPowerMode.set(sTargetPowerMode.get() == POWER_MODE_NORMAL ? POWER_MODE_OFF : POWER_MODE_NORMAL);
-    }
-
-    /**
-     * 使用普通模式切换电源模式
-     */
-    private static void doToggle(ClassLoader classLoader, IBinder displayBinder) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
-        setDisplayPowerMode(sTargetPowerMode.get(), classLoader, displayBinder);
-    }
-
-    /**
-     * 使用兼容模式切换电源模式，防止由于其他因素修改导致变量翻转失效
-     */
-    private static void doToggleInCompatibilityMode(ClassLoader classLoader, IBinder displayBinder) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException, IOException {
-        int targetPowerMode = -1;
-        //通过硬件层获取当前屏幕状态
-        Process process;
-        try {
-            process = Runtime.getRuntime().exec("dumpsys SurfaceFlinger");
-        } catch (IOException e) {
-            doToggle(classLoader, displayBinder);
-            return;
-        }
-        //读取屏幕信息并切换状态
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.contains("powerMode=On")) {
-                    targetPowerMode = POWER_MODE_OFF;
-                    break;
-                }
-
-                if (line.contains("powerMode=Off")) {
-                    targetPowerMode = POWER_MODE_NORMAL;
-                    break;
-                }
+            int currentPowerMode = getCurrentPowerMode();
+            XLog.log(Log.DEBUG, "SurfaceFlinger reports current display mode=" + modeName(currentPowerMode));
+            if (currentPowerMode == targetPowerMode) {
+                XLog.log(Log.INFO, "Display already has requested mode=" + modeName(targetPowerMode));
+                return true;
             }
         }
-        process.destroy();
-        //获取失败进行降级
-        if (targetPowerMode == -1) {
-            doToggle(classLoader, displayBinder);
-        } else {
-            setDisplayPowerMode(targetPowerMode, classLoader, displayBinder);
-        }
+        setDisplayPowerMode(targetPowerMode, classLoader, displayBinder);
+        XLog.log(Log.INFO, "SurfaceControl.setDisplayPowerMode invoked with mode=" + modeName(targetPowerMode));
+        return true;
+    }
 
+    private static String modeName(int powerMode) {
+        if (powerMode == POWER_MODE_OFF) return "OFF(0)";
+        if (powerMode == POWER_MODE_NORMAL) return "NORMAL(2)";
+        return "UNKNOWN(" + powerMode + ")";
+    }
+
+    /**
+     * 兼容模式下读取 SurfaceFlinger 的实际显示电源模式；无法识别时返回未知值。
+     */
+    private static int getCurrentPowerMode() {
+        Process process = null;
+        try {
+            process = Runtime.getRuntime().exec("dumpsys SurfaceFlinger");
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (line.contains("powerMode=On")) {
+                        return POWER_MODE_NORMAL;
+                    }
+                    if (line.contains("powerMode=Off")) {
+                        return POWER_MODE_OFF;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            XLog.error("Failed to read the current display power mode.", e);
+        } finally {
+            if (process != null) {
+                process.destroy();
+            }
+        }
+        XLog.log(Log.WARN, "Could not parse powerMode from dumpsys SurfaceFlinger output.");
+        return -1;
     }
 
     /**
@@ -141,9 +147,14 @@ final class DisplayPowerControl {
                 if (ids != null && ids.length > 0) {
                     Method getPhysicalDisplayToken = displayControl.getDeclaredMethod("getPhysicalDisplayToken", long.class);
                     getPhysicalDisplayToken.setAccessible(true);
-                    return (IBinder) getPhysicalDisplayToken.invoke(null, ids[0]);
+                    IBinder token = (IBinder) getPhysicalDisplayToken.invoke(null, ids[0]);
+                    if (token != null) {
+                        XLog.log(Log.DEBUG, "Resolved physical display token with DisplayControl; id=" + ids[0]);
+                    }
+                    return token;
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable error) {
+                XLog.log(Log.WARN, "DisplayControl token lookup failed: " + error);
             }
         }
 
@@ -154,8 +165,12 @@ final class DisplayPowerControl {
                 Method getInternalDisplayToken = surfaceControl.getDeclaredMethod("getInternalDisplayToken");
                 getInternalDisplayToken.setAccessible(true);
                 IBinder token = (IBinder) getInternalDisplayToken.invoke(null);
-                if (token != null) return token;
-            } catch (Throwable ignored) {
+                if (token != null) {
+                    XLog.log(Log.DEBUG, "Resolved physical display token with SurfaceControl.getInternalDisplayToken.");
+                    return token;
+                }
+            } catch (Throwable error) {
+                XLog.log(Log.WARN, "Internal display token lookup failed: " + error);
             }
         }
 
@@ -163,8 +178,13 @@ final class DisplayPowerControl {
             Class<?> surfaceControl = classLoader.loadClass("android.view.SurfaceControl");
             Method getBuiltInDisplay = surfaceControl.getDeclaredMethod("getBuiltInDisplay", int.class);
             getBuiltInDisplay.setAccessible(true);
-            return (IBinder) getBuiltInDisplay.invoke(null, 0);
-        } catch (Throwable ignored) {
+            IBinder token = (IBinder) getBuiltInDisplay.invoke(null, 0);
+            if (token != null) {
+                XLog.log(Log.DEBUG, "Resolved physical display token with SurfaceControl.getBuiltInDisplay.");
+            }
+            return token;
+        } catch (Throwable error) {
+            XLog.log(Log.WARN, "Built-in display token lookup failed: " + error);
         }
 
         return null;
