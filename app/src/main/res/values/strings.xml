@@ -1,10 +1,10 @@
 <resources>
     <string name="app_name">fakeScreen</string>
-    <string name="module_version">v2.1 (Build 20261109)</string>
+    <string name="module_version">v2.2 (Build 20261110)</string>
     <string name="xposeddescription">允许将电源按钮单击行为设置为仅熄屏</string>
     <string name="github_repo_url">https://github.com/chuyb-re/fakeScreen</string>
     <string name="help">https://github.com/chuyb-re/fakeScreen</string>
-    <string name="tip">模块激活并开启功能开关后，单击电源键仅熄灭屏幕；假熄屏期间双击电源键唤醒屏幕。</string>
+    <string name="tip">模块激活并开启功能后，单击电源键仅熄灭屏幕；假熄屏期间双击电源键尝试亮屏。长按电源键时会先尝试恢复屏幕，再交由系统处理。\n\n10 秒内短按音量上键 5 次可关闭功能并尝试恢复屏幕；这些按键仍会交给系统，音量可能改变。恢复请求发出后 1 分钟内仍可重复此操作。\n\n如遇问题，可在诊断日志中查看并导出记录。</string>
     <string name="dialog_tips_title">使用提示</string>
     <string name="dialog_positive_btn">确定</string>
 

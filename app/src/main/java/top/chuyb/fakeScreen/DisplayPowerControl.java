@@ -39,21 +39,38 @@ final class DisplayPowerControl {
      *
      * @param classLoader 用于解析 SurfaceControl 与显示 token 的 ClassLoader。
      */
-    static void turnScreenOff(ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
-        if (applyPowerMode(POWER_MODE_OFF, classLoader)) {
-            sScreenOffByFakeScreen.set(true);
-            XLog.log(Log.INFO, "FakeScreen display state set to off.");
+    static boolean turnScreenOff(ClassLoader classLoader) throws Exception {
+        // 原生调用可能在抛出异常前已经改变了面板状态，先保守标记为需要恢复。
+        sScreenOffByFakeScreen.set(true);
+        try {
+            if (!applyPowerMode(POWER_MODE_OFF, classLoader)) {
+                sScreenOffByFakeScreen.set(false); // 无显示 token，尚未发出熄屏请求。
+                return false;
+            }
+            XLog.log(Log.INFO, "FakeScreen display OFF was requested.");
+            return true;
+        } catch (Exception error) {
+            try {
+                if (!wakeScreen(classLoader)) {
+                    XLog.log(Log.ERROR, "Display recovery after failed OFF request could not be sent.");
+                }
+            } catch (Exception recoveryError) {
+                error.addSuppressed(recoveryError);
+            }
+            throw error;
         }
     }
 
     /**
      * 将 FakeScreen 主动关闭的物理屏幕恢复到正常显示模式。
      */
-    static void wakeScreen(ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+    static boolean wakeScreen(ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
         if (applyPowerMode(POWER_MODE_NORMAL, classLoader)) {
             sScreenOffByFakeScreen.set(false);
-            XLog.log(Log.INFO, "FakeScreen display state set to on.");
+            XLog.log(Log.INFO, "FakeScreen display NORMAL was requested; physical state is not confirmed.");
+            return true;
         }
+        return false;
     }
 
     private static boolean applyPowerMode(int targetPowerMode, ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
@@ -64,7 +81,8 @@ final class DisplayPowerControl {
         }
         XLog.log(Log.DEBUG, "Applying display power mode=" + modeName(targetPowerMode)
                 + ", compatibilityMode=" + useCompatibilityMode);
-        if (useCompatibilityMode) {
+        // 恢复始终直接请求 NORMAL：dumpsys 可能过期或阻塞，不能让它阻止应急恢复。
+        if (useCompatibilityMode && targetPowerMode == POWER_MODE_OFF) {
             int currentPowerMode = getCurrentPowerMode();
             XLog.log(Log.DEBUG, "SurfaceFlinger reports current display mode=" + modeName(currentPowerMode));
             if (currentPowerMode == targetPowerMode) {

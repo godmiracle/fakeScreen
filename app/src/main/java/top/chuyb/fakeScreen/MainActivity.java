@@ -1,9 +1,13 @@
 package top.chuyb.fakeScreen;
 
 import android.content.Intent;
+import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Window;
 import android.widget.LinearLayout;
@@ -22,6 +26,15 @@ import androidx.core.view.WindowCompat;
  * @author chuyb-re
  */
 public class MainActivity extends AppCompatActivity {
+    private SwitchCompat featureSwitch;
+    private boolean updatingFeatureSwitch;
+    private boolean observingFeatureState;
+    private final ContentObserver featureStateObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+        @Override
+        public void onChange(boolean selfChange) {
+            refreshFeatureSwitch();
+        }
+    };
 
     /**
      * 初始化界面布局、窗口元素与各控件的事件监听。
@@ -59,11 +72,45 @@ public class MainActivity extends AppCompatActivity {
      * 绑定功能开关控件，读取全局设置状态，并在切换时发送广播。
      */
     private void initSwitchButton() {
-        SwitchCompat switchBtn = findViewById(R.id.switch_fake_screen);
-        if (switchBtn == null) return;
-        switchBtn.setChecked(FakeScreenState.isEnabled(this));
-        switchBtn.setOnCheckedChangeListener((buttonView, isChecked) ->
-                FakeScreenState.setEnabled(this, isChecked));
+        featureSwitch = findViewById(R.id.switch_fake_screen);
+        if (featureSwitch == null) return;
+        refreshFeatureSwitch();
+        featureSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (!updatingFeatureSwitch) FakeScreenState.setEnabled(this, isChecked);
+        });
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        try {
+            getContentResolver().registerContentObserver(
+                    Settings.Global.getUriFor(FakeScreenState.KEY_FAKE_SCREEN_ENABLED),
+                    false, featureStateObserver);
+            observingFeatureState = true;
+        } catch (RuntimeException error) {
+            XLog.error("Failed to observe FakeScreen state", error);
+        }
+        refreshFeatureSwitch();
+    }
+
+    @Override
+    protected void onStop() {
+        if (observingFeatureState) {
+            getContentResolver().unregisterContentObserver(featureStateObserver);
+            observingFeatureState = false;
+        }
+        super.onStop();
+    }
+
+    private void refreshFeatureSwitch() {
+        if (featureSwitch == null) return;
+        updatingFeatureSwitch = true;
+        try {
+            featureSwitch.setChecked(FakeScreenState.isEnabled(this));
+        } finally {
+            updatingFeatureSwitch = false;
+        }
     }
 
     /**

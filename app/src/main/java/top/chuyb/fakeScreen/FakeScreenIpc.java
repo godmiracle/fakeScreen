@@ -24,6 +24,7 @@ final class FakeScreenIpc {
 
     private static Context sSystemContext = null;
     private static volatile boolean sIsFakeScreenEnabled = false;
+    private static Runnable sOnDisabled;
 
     private FakeScreenIpc() {
         // 工具类，禁止实例化。
@@ -54,8 +55,9 @@ final class FakeScreenIpc {
      * @param pwmClass    PhoneWindowManager 的 Class 引用。
      * @param pwmInstance PhoneWindowManager 实例对象。
      */
-    static void attach(XposedModule module, Class<?> pwmClass, Object pwmInstance) {
+    static void attach(XposedModule module, Class<?> pwmClass, Object pwmInstance, Runnable onDisabled) {
         sSystemContext = ReflectUtils.getSystemContext(pwmClass, pwmInstance);
+        sOnDisabled = onDisabled;
         DiagnosticLogBridge.attach(sSystemContext);
         if (pwmInstance == null) return;
         registerToggleReceiver(module);
@@ -82,19 +84,7 @@ final class FakeScreenIpc {
                     @Override
                     public void onReceive(Context context, Intent intent) {
                         boolean enabled = intent.getBooleanExtra(FakeScreenState.EXTRA_ENABLED, false);
-                        sIsFakeScreenEnabled = enabled;
-                        XLog.log(Log.INFO, "FakeScreen toggle received by system_server: enabled=" + enabled);
-
-                        try {
-                            Settings.Global.putInt(
-                                    context.getContentResolver(),
-                                    FakeScreenState.KEY_FAKE_SCREEN_ENABLED,
-                                    enabled ? 1 : 0
-                            );
-                        } catch (Exception e) {
-                            XLog.error("Failed to write Settings.Global in system_server", e);
-                        }
-                        applyScreenTimeout(module, enabled);
+                        setEnabled(module, enabled, "broadcast");
                     }
                 };
 
@@ -111,6 +101,32 @@ final class FakeScreenIpc {
         } catch (Exception e) {
             XLog.error("Failed to register BroadcastReceiver", e);
         }
+    }
+
+    /** 音量键逃生与界面开关使用同一条关闭路径；须在系统主线程调用。 */
+    static void disableFromEscape(XposedModule module) {
+        setEnabled(module, false, "volume-up escape");
+    }
+
+    private static void setEnabled(XposedModule module, boolean enabled, String reason) {
+        sIsFakeScreenEnabled = enabled;
+        XLog.log(Log.INFO, "FakeScreen state changed: enabled=" + enabled + ", reason=" + reason);
+        if (!enabled && sOnDisabled != null) {
+            try {
+                sOnDisabled.run();
+            } catch (Exception e) {
+                XLog.error("Failed to recover display while disabling FakeScreen", e);
+            }
+        }
+        try {
+            if (sSystemContext != null) {
+                Settings.Global.putInt(sSystemContext.getContentResolver(),
+                        FakeScreenState.KEY_FAKE_SCREEN_ENABLED, enabled ? 1 : 0);
+            }
+        } catch (Exception e) {
+            XLog.error("Failed to write Settings.Global in system_server", e);
+        }
+        applyScreenTimeout(module, enabled);
     }
 
     /**
