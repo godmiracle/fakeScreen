@@ -1,9 +1,11 @@
 package top.chuyb.fakeScreen;
 
 import android.annotation.SuppressLint;
+import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
+import android.view.Display;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -65,12 +67,63 @@ final class DisplayPowerControl {
      * 将 FakeScreen 主动关闭的物理屏幕恢复到正常显示模式。
      */
     static boolean wakeScreen(ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+        if (requiresDisplayServiceRecovery()) {
+            if (recoverThroughDisplayService(classLoader)) {
+                sScreenOffByFakeScreen.set(false);
+                XLog.log(Log.INFO, "Display service recovery was requested; physical state is not confirmed.");
+                return true;
+            }
+
+            // 服务恢复失败时仍尝试旧接口，但不能将请求成功当作实际亮屏。
+            XLog.log(Log.WARN, "Display service recovery failed; trying SurfaceControl as a fallback.");
+            applyPowerMode(POWER_MODE_NORMAL, classLoader);
+            return false;
+        }
         if (applyPowerMode(POWER_MODE_NORMAL, classLoader)) {
             sScreenOffByFakeScreen.set(false);
             XLog.log(Log.INFO, "FakeScreen display NORMAL was requested; physical state is not confirmed.");
             return true;
         }
         return false;
+    }
+
+    private static boolean requiresDisplayServiceRecovery() {
+        return Build.VERSION.SDK_INT == 37 && "OPPO".equalsIgnoreCase(Build.MANUFACTURER);
+    }
+
+    private static boolean recoverThroughDisplayService(ClassLoader classLoader) {
+        try {
+            Class<?> managerClass = classLoader.loadClass("android.hardware.display.DisplayManagerGlobal");
+            Method getInstance = managerClass.getDeclaredMethod("getInstance");
+            Method requestPower = managerClass.getDeclaredMethod("requestDisplayPower", int.class, int.class);
+            getInstance.setAccessible(true);
+            requestPower.setAccessible(true);
+            Object manager = getInstance.invoke(null);
+            if (manager == null) {
+                XLog.log(Log.ERROR, "DisplayManagerGlobal is unavailable; cannot restore display service state.");
+                return false;
+            }
+
+            // 当前代码在 system_server 中运行，避免沿用触发恢复的外部 Binder 调用身份。
+            long identity = Binder.clearCallingIdentity();
+            DisplayServiceRecovery.Result result;
+            try {
+                XLog.log(Log.DEBUG, "Requesting display service recovery for the default display.");
+                result = DisplayServiceRecovery.recover(state ->
+                        Boolean.TRUE.equals(requestPower.invoke(manager, Display.DEFAULT_DISPLAY, state)));
+            } finally {
+                Binder.restoreCallingIdentity(identity);
+            }
+            XLog.log(result.isSuccessful() ? Log.INFO : Log.ERROR,
+                    "Display service recovery: offAccepted=" + result.offAccepted
+                            + ", resetAccepted=" + result.resetAccepted);
+            if (result.offError != null) XLog.error("Display service OFF request failed.", result.offError);
+            if (result.resetError != null) XLog.error("Display service reset request failed.", result.resetError);
+            return result.isSuccessful();
+        } catch (Exception error) {
+            XLog.error("Cannot access display service recovery.", error);
+            return false;
+        }
     }
 
     private static boolean applyPowerMode(int targetPowerMode, ClassLoader classLoader) throws ClassNotFoundException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
