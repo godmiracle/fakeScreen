@@ -32,7 +32,7 @@ adb logcat -b all -d -v time -s FakeScreen
 
 ---
 ## 兼容性
-项目历史版本曾在以下设备上验证。v2.4 要求 Android 15（API 35）及以上，并以 Android 17（API 37）为目标。OPPO PMX110 的 ColorOS 17 已验证单击熄屏、双击亮屏和广播权限；Android 15、16 及其他设备尚未验证本版。
+项目历史版本曾在以下设备上验证。v2.5 要求 Android 15（API 35）及以上，并以 Android 17（API 37）为目标。v2.4 已在 OPPO PMX110 的 ColorOS 17 验证单击熄屏、双击亮屏和广播权限，v2.5 在此基础上更新版本号；Android 15、16 及其他设备尚未验证本版。
 
 | 设备         | 系统                | Android版本  |
 |:-----------|:------------------|:-----------|
@@ -74,7 +74,7 @@ bash ./gradlew assembleRelease
 ```
 
 ## GitHub Actions 构建 Release
-在 GitHub 的 **Actions** 页面手动运行 **Build Release APK** 会先执行单元测试，再构建 APK 并生成 30 天有效的 `fakeScreen-release-apk` artifact。推送名称以 `v` 开头的 tag（例如 `v2.4`）会在测试和构建通过后创建 GitHub Release，并将 APK 附加到该 Release。
+在 GitHub 的 **Actions** 页面手动运行 **Build Release APK** 会先执行单元测试，再构建 APK 并生成 30 天有效的 `fakeScreen-release-apk` artifact。推送名称以 `v` 开头的 tag（例如 `v2.5`）会在测试和构建通过后创建 GitHub Release，并将 APK 附加到该 Release。
 
 Release 使用固定的项目专用签名。Actions 需要仓库 Secrets `FAKESCREEN_KEYSTORE_BASE64` 和 `FAKESCREEN_KEYSTORE_PASSWORD`；缺失时构建失败，不会退回临时 debug 签名。本机构建默认读取 `.signing/fakescreen-release.p12` 和 `.signing/keystore-password`，也可以通过环境变量 `FAKESCREEN_KEYSTORE_FILE` 和 `FAKESCREEN_KEYSTORE_PASSWORD` 指定。
 

@@ -16,8 +16,8 @@ android {
         applicationId = "com.godmiracle.fakescreen"
         targetSdk = 37
         minSdk = 35
-        versionCode = 24
-        versionName = "2.4"
+        versionCode = 25
+        versionName = "2.5"
     }
 
     signingConfigs {
