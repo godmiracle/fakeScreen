@@ -22,7 +22,9 @@ public final class FakeScreenState {
     public static final String KEY_FAKE_SCREEN_ENABLED = "FakeScreen_enable";
 
     /** 界面切换开关时发送的广播 Action。 */
-    public static final String ACTION_TOGGLE_FAKE_SCREEN = "top.chuyb.fakeScreen.ACTION_TOGGLE";
+    public static final String ACTION_TOGGLE_FAKE_SCREEN = BuildConfig.APPLICATION_ID + ".ACTION_TOGGLE";
+    static final String PERMISSION_CONTROL = BuildConfig.APPLICATION_ID + ".permission.CONTROL_FAKE_SCREEN";
+    static final String ACTION_ADB_TOGGLE = "top.chuyb.fakeScreen.ACTION_TOGGLE";
 
     /** 广播中携带目标开关状态的 extra 键。 */
     public static final String EXTRA_ENABLED = "enabled";

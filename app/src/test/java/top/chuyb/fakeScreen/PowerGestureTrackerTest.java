@@ -34,6 +34,32 @@ public class PowerGestureTrackerTest {
     }
 
     @Test
+    public void pressCrossingIntoFakeOffCountsAsFirstWakePress() {
+        event(PowerGestureTracker.Key.POWER, true, 1_000, 1_000, 0, false, false);
+        assertEquals(PowerGestureTracker.Result.NONE,
+                event(PowerGestureTracker.Key.POWER, false, 1_000, 1_150, 0, false, true));
+
+        assertTrue(tracker.isFakeOffPowerPress(1_000));
+        assertEquals(PowerGestureTracker.Result.WAKE,
+                press(PowerGestureTracker.Key.POWER, 1_250, 1_300, true));
+        tracker.resetPendingGestures();
+        assertTrue(tracker.isFakeOffPowerPress(1_000));
+    }
+
+    @Test
+    public void canceledCrossingPressCannotStartWakeGesture() {
+        event(PowerGestureTracker.Key.POWER, true, 1_000, 1_000, 0, false, false);
+        assertEquals(PowerGestureTracker.Result.NONE,
+                event(PowerGestureTracker.Key.POWER, false, 1_000, 1_150, 0, true, true));
+
+        assertFalse(tracker.isFakeOffPowerPress(1_000));
+        assertEquals(PowerGestureTracker.Result.NONE,
+                press(PowerGestureTracker.Key.POWER, 1_250, 1_300, true));
+        assertEquals(PowerGestureTracker.Result.WAKE,
+                press(PowerGestureTracker.Key.POWER, 1_400, 1_450, true));
+    }
+
+    @Test
     public void duplicateHooksDoNotTurnOnePressIntoTwo() {
         event(PowerGestureTracker.Key.POWER, true, 1_000, 1_000, 0, false, true);
         event(PowerGestureTracker.Key.POWER, true, 1_000, 1_000, 0, false, true);

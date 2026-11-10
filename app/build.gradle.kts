@@ -2,17 +2,32 @@ plugins {
     alias(libs.plugins.agp.app)
 }
 
+val releaseKeystore = providers.environmentVariable("FAKESCREEN_KEYSTORE_FILE").orNull
+    ?: rootProject.file(".signing/fakescreen-release.p12").absolutePath
+val releasePassword = providers.environmentVariable("FAKESCREEN_KEYSTORE_PASSWORD").orNull
+    ?: rootProject.file(".signing/keystore-password").takeIf { it.isFile }?.readText()?.trim()
+
 android {
     namespace = "top.chuyb.fakeScreen"
     compileSdk = 37
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        //noinspection ExpiredTargetSdkVersion
-        targetSdk = 31
-        minSdk = 26
-        versionCode = 23
-        versionName = "2.3"
+        applicationId = "com.godmiracle.fakescreen"
+        targetSdk = 37
+        minSdk = 35
+        versionCode = 24
+        versionName = "2.4"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(releaseKeystore)
+            storePassword = releasePassword
+            storeType = "PKCS12"
+            keyAlias = "fakescreen-release"
+            keyPassword = releasePassword
+        }
     }
 
     buildTypes {
@@ -20,11 +35,12 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles("proguard-rules.pro")
-            signingConfig = signingConfigs["debug"]
+            signingConfig = signingConfigs["release"]
         }
     }
 
     buildFeatures {
+        buildConfig = true
         viewBinding = true
     }
 

@@ -67,7 +67,7 @@ final class PowerGestureTracker {
 
     synchronized boolean isFakeOffPowerPress(long eventTime) {
         PowerPress press = findPowerPress(eventTime);
-        return press != null && press.startedWhileOff;
+        return press != null && press.fakeOff;
     }
 
     synchronized boolean isPowerPressHandled(long eventTime) {
@@ -120,7 +120,7 @@ final class PowerGestureTracker {
                 lastPowerUpTime = -1;
                 return Result.NONE;
             }
-            currentPower = new Press(deviceId, downTime, screenOff);
+            currentPower = new Press(deviceId, downTime);
             powerPresses.put(downTime, new PowerPress(screenOff));
             if (powerPresses.size() > MAX_POWER_PRESSES) {
                 powerPresses.remove(powerPresses.keySet().iterator().next());
@@ -132,11 +132,15 @@ final class PowerGestureTracker {
         Press press = currentPower;
         currentPower = null;
         PowerPress observed = powerPresses.get(downTime);
+        boolean shortPress = isShortPress(press, eventTime, canceled);
         if (observed != null) {
             observed.upTime = eventTime;
-            observed.completed = isShortPress(press, eventTime, canceled);
+            observed.completed = shortPress;
+            // 按下时仍亮、松开时已进入假熄屏，也属于熄屏后的恢复手势。
+            // 保留身份，避免延迟到亮屏后的 powerPress 再次触发熄屏。
+            if (screenOff && shortPress) observed.fakeOff = true;
         }
-        if (!screenOff || !press.startedWhileOff || !isShortPress(press, eventTime, canceled)) {
+        if (!screenOff || !shortPress) {
             lastPowerUpTime = -1;
             return Result.NONE;
         }
@@ -161,7 +165,7 @@ final class PowerGestureTracker {
                 if (matches(currentVolume, deviceId, downTime)) currentVolume.repeated = true;
                 return Result.NONE;
             }
-            currentVolume = new Press(deviceId, downTime, true);
+            currentVolume = new Press(deviceId, downTime);
             return Result.NONE;
         }
         if (!matches(currentVolume, deviceId, downTime)) return Result.NONE;
@@ -197,24 +201,22 @@ final class PowerGestureTracker {
     private static final class Press {
         final int deviceId;
         final long downTime;
-        final boolean startedWhileOff;
         boolean repeated;
 
-        Press(int deviceId, long downTime, boolean startedWhileOff) {
+        Press(int deviceId, long downTime) {
             this.deviceId = deviceId;
             this.downTime = downTime;
-            this.startedWhileOff = startedWhileOff;
         }
     }
 
     private static final class PowerPress {
-        final boolean startedWhileOff;
+        boolean fakeOff;
         long upTime = -1;
         boolean completed;
         boolean handled;
 
         PowerPress(boolean startedWhileOff) {
-            this.startedWhileOff = startedWhileOff;
+            this.fakeOff = startedWhileOff;
         }
     }
 

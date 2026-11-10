@@ -92,9 +92,28 @@ final class FakeScreenIpc {
                         sSystemContext,
                         receiver,
                         filter,
+                        FakeScreenState.PERMISSION_CONTROL,
+                        null,
                         ContextCompat.RECEIVER_EXPORTED
                 );
-                XLog.log(Log.INFO,"Register BroadcastReceiver successful");
+
+                // 保留原有 ADB 命令；DUMP 由 shell 和系统持有，普通应用无法获取。
+                BroadcastReceiver adbReceiver = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        boolean enabled = intent.getBooleanExtra(FakeScreenState.EXTRA_ENABLED, false);
+                        setEnabled(module, enabled, "adb-broadcast");
+                    }
+                };
+                ContextCompat.registerReceiver(
+                        sSystemContext,
+                        adbReceiver,
+                        new IntentFilter(FakeScreenState.ACTION_ADB_TOGGLE),
+                        android.Manifest.permission.DUMP,
+                        null,
+                        ContextCompat.RECEIVER_EXPORTED
+                );
+                XLog.log(Log.INFO,"Registered permission-protected control and ADB receivers.");
             } else {
                 XLog.log(Log.ERROR,"Failed to extract Context from PhoneWindowManager");
             }

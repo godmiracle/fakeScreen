@@ -11,6 +11,7 @@ import android.provider.Settings;
 import android.util.Log;
 import android.view.Window;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -47,7 +48,9 @@ public class MainActivity extends AppCompatActivity {
         setupEdgeToEdgeWindow();
         setContentView(R.layout.activity_main);
         DiagnosticLogBridge.attach(getApplicationContext());
-        DiagnosticLogBridge.record(Log.INFO, "App opened; " + getString(R.string.module_version)
+        String version = getString(R.string.module_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE);
+        ((TextView) findViewById(R.id.tv_module_version)).setText(version);
+        DiagnosticLogBridge.record(Log.INFO, "App opened; " + version
                 + "; device=" + Build.MANUFACTURER + " " + Build.MODEL
                 + "; Android API=" + Build.VERSION.SDK_INT, null);
         initSwitchButton();

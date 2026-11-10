@@ -25,10 +25,17 @@ final class DesktopIconHelper {
      * @return 桌面图标当前是否已隐藏。
      */
     static boolean isHidden(Context context) {
-        int state = context.getPackageManager()
-                .getComponentEnabledSetting(launcherComponent(context));
-        return state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                || state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER;
+        PackageManager pm = context.getPackageManager();
+        ComponentName component = launcherComponent(context);
+        int state = pm.getComponentEnabledSetting(component);
+        if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return false;
+        if (state != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) return true;
+        try {
+            // 默认状态取清单中的组件配置；用户手动修改后系统会保存显式状态。
+            return !pm.getActivityInfo(component, PackageManager.MATCH_DISABLED_COMPONENTS).enabled;
+        } catch (PackageManager.NameNotFoundException error) {
+            return true;
+        }
     }
 
     /**

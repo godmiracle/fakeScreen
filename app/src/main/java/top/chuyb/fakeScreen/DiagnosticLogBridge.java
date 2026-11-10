@@ -15,7 +15,7 @@ import java.util.Locale;
 
 /** 在后台把 system_server 和应用中的日志送到应用私有存储。 */
 final class DiagnosticLogBridge {
-    static final Uri URI = Uri.parse("content://top.chuyb.fakeScreen.diagnostics");
+    static final Uri URI = Uri.parse("content://" + BuildConfig.APPLICATION_ID + ".diagnostics");
     static final String METHOD_APPEND = "append";
     static final String KEY_ENTRY = "entry";
     static final String KEY_STORED = "stored";

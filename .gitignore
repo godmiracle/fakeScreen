@@ -11,6 +11,7 @@ captures/
 .shelf/
 .DS_Store
 keystore.properties
+.signing/
 app/release
 local.properties
 
